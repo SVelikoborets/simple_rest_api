@@ -3,7 +3,8 @@ header('Content-Type: application/json');
 
 $dataFile = 'data.txt';
 $logFile = 'log.txt';
-
+$largeLogFile = 'large_requests_log.txt';
+$maxDataSize = 10 * 1024 * 1024;
 function getClientIP()
 {
     return $_SERVER['REMOTE_ADDR'];
@@ -12,9 +13,19 @@ function getClientIP()
 if($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $input = file_get_contents('php://input');
+
+    if (strlen($input) > $maxDataSize) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Размер данных слишком велик']);
+
+        $newLog = date('Y-m-d H:i:s') . ' | IP: ' . getClientIP() . ' | Size: ' . strlen($input) . "\n";
+        file_put_contents($largeLogFile, $newLog, FILE_APPEND);
+        exit;
+    }
+
     $data = json_decode($input, true);
 
-    if(strlen($data['text'] ) > 1000) {
+    if(mb_strlen($data['text'] ) > 1000) {
         http_response_code(400);
         echo json_encode(['error' => 'Длинна строки превысила лимит в 1000 символов']);
         exit;
@@ -47,8 +58,16 @@ if($_SERVER['REQUEST_METHOD'] === 'GET') {
         exit;
     }
 
-    $data = file_get_contents($dataFile);
-    echo json_encode(['data' => $data]);
+    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 100;
+    $offset = isset($_GET['offset']) ? (int) $_GET['offset'] : 0;
+
+// Чтение данных из файла
+    $lines = file($dataFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+// Обрезка данных по параметрам limit и offset
+    $data = array_slice($lines, $offset, $limit);
+
+    echo json_encode(['data' => implode(PHP_EOL, $data)]);
     exit;
 }
 
